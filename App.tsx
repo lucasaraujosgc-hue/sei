@@ -5,7 +5,7 @@ import Step2 from './src/components/Step2';
 import Step3 from './src/components/Step3';
 import Step4 from './src/components/Step4';
 import { generateExcel } from './src/utils/exportExcel';
-import { FileSpreadsheet, Download, Save, Home, BookOpen, Clock, FileText, Shield } from 'lucide-react';
+import { FileSpreadsheet, Save, BookOpen, Clock, FileText, Shield, FolderOpen, Edit2, Trash2, X } from 'lucide-react';
 
 const initialData: ProcessoData = {
   nome: '',
@@ -23,6 +23,9 @@ export default function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
+  
+  const [isSaved, setIsSaved] = useState(false);
+  const [showSavedList, setShowSavedList] = useState(false);
 
   const [savedDrafts, setSavedDrafts] = useState<any[]>(() => {
     try {
@@ -32,10 +35,9 @@ export default function App() {
     }
   });
 
-  // A simple password auth requested by user. "quem tiver a senha, funcionará dessa forma"
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'sei2025' || password === 'SEI2025' || password === 'admin') { // arbitrary simple password
+    if (password === 'sei2025' || password === 'SEI2025' || password === 'admin') {
       setIsAuthenticated(true);
     } else {
       alert('Senha incorreta!');
@@ -44,17 +46,63 @@ export default function App() {
 
   const handleUpdate = (updates: Partial<ProcessoData>) => {
     setData({ ...data, ...updates });
+    setIsSaved(false);
   };
 
-  const handleExport = () => {
-    generateExcel(data);
+  const handleSave = () => {
+    if (!data.nome) {
+        alert("Por favor, preencha o Nome do Processo na Etapa 1 antes de salvar.");
+        return;
+    }
+
+    let currentId = data.id || Date.now().toString();
+    const currentData = { ...data, id: currentId };
+    
+    setData(currentData);
+    
+    let newDrafts = [...savedDrafts];
+    const existingIndex = newDrafts.findIndex(d => d.id === currentId);
+    
+    if (existingIndex >= 0) {
+       newDrafts[existingIndex] = { id: currentId, data: currentData, name: currentData.nome || 'Processo Sem Nome' };
+    } else {
+       newDrafts.push({ id: currentId, data: currentData, name: currentData.nome || 'Processo Sem Nome' });
+    }
+    
+    setSavedDrafts(newDrafts);
+    localStorage.setItem('sei_drafts', JSON.stringify(newDrafts));
+    setIsSaved(true);
+    
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 bg-green-600 text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-bounce';
+    toast.innerHTML = 'Processo salvo com sucesso!';
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
   };
 
-  const handleSaveDraft = () => {
-    const drafts = [...savedDrafts, { id: Date.now(), data, name: data.nome || 'Rascunho Sem Nome' }];
-    setSavedDrafts(drafts);
-    localStorage.setItem('sei_drafts', JSON.stringify(drafts));
-    alert('Rascunho salvo com sucesso nas estatísticas locais.');
+  const handleExport = (processToExport = data) => {
+    generateExcel(processToExport);
+  };
+
+  const loadSavedProcess = (processData: ProcessoData) => {
+      setData(processData);
+      setIsSaved(true);
+      setShowSavedList(false);
+      setCurrentStep(1); 
+  };
+
+  const deleteSavedProcess = (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (confirm('Deseja realmente excluir este processo salvo?')) {
+          const newDrafts = savedDrafts.filter(d => d.id !== id);
+          setSavedDrafts(newDrafts);
+          localStorage.setItem('sei_drafts', JSON.stringify(newDrafts));
+          if (data.id === id) {
+              setData(initialData);
+              setIsSaved(false);
+              setCurrentStep(1);
+          }
+      }
   };
 
   if (!isAuthenticated) {
@@ -91,7 +139,7 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 font-sans">
+    <div className="min-h-screen bg-[#020617] text-slate-100 font-sans relative">
       <header className="bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-800">
         <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -102,10 +150,23 @@ export default function App() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-              <button onClick={handleSaveDraft} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white border border-slate-700 rounded-lg transition-all active:scale-95 hover:bg-slate-800">
+              <button 
+                onClick={() => setShowSavedList(true)} 
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white border border-slate-700 rounded-lg transition-all active:scale-95 hover:bg-slate-800"
+              >
+                  <FolderOpen size={16} /> Processos Criados
+              </button>
+              <button 
+                onClick={handleSave} 
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white border border-slate-700 rounded-lg transition-all active:scale-95 hover:bg-slate-800"
+              >
                   <Save size={16} /> Salvar Rascunho
               </button>
-              <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 border border-green-500 rounded-lg transition-all active:scale-95">
+              <button 
+                  onClick={() => handleExport(data)} 
+                  disabled={!isSaved}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed border border-green-500 rounded-lg transition-all active:scale-95"
+              >
                   <FileSpreadsheet size={16} /> Exportar XLSX
               </button>
           </div>
@@ -143,9 +204,83 @@ export default function App() {
           {currentStep === 1 && <Step1 data={data} update={handleUpdate} onNext={() => setCurrentStep(2)} />}
           {currentStep === 2 && <Step2 data={data} update={handleUpdate} onNext={() => setCurrentStep(3)} onPrev={() => setCurrentStep(1)} />}
           {currentStep === 3 && <Step3 data={data} update={handleUpdate} onNext={() => setCurrentStep(4)} onPrev={() => setCurrentStep(2)} />}
-          {currentStep === 4 && <Step4 data={data} update={handleUpdate} onFinish={handleExport} onPrev={() => setCurrentStep(3)} />}
+          {currentStep === 4 && <Step4 data={data} isSaved={isSaved} update={handleUpdate} onSave={handleSave} onFinish={() => handleExport(data)} onPrev={() => setCurrentStep(3)} />}
         </div>
       </main>
+
+      {/* Modal de Processos Criados */}
+      {showSavedList && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-center py-10 px-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-4xl w-full shadow-2xl overflow-hidden max-h-[85vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-slate-800">
+               <h2 className="text-xl font-bold text-white flex items-center gap-2"><FolderOpen className="text-blue-500" /> Processos Criados</h2>
+               <button onClick={() => setShowSavedList(false)} className="text-slate-400 hover:text-white p-2">
+                 <X size={20} />
+               </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+               {savedDrafts.length === 0 ? (
+                  <div className="text-center py-12">
+                     <FileText size={48} className="mx-auto text-slate-600 mb-4" />
+                     <p className="text-slate-400">Nenhum processo foi salvo ainda.</p>
+                  </div>
+               ) : (
+                  <div className="space-y-3">
+                     {savedDrafts.map((d) => (
+                        <div key={d.id} onClick={() => loadSavedProcess(d.data)} className="group bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg p-4 flex items-center justify-between cursor-pointer transition-colors">
+                           <div>
+                              <h3 className="font-semibold text-white group-hover:text-blue-400 transition-colors">{d.name}</h3>
+                              <p className="text-xs text-slate-400 mt-1">{d.data.tramitacoes?.length || 0} Tramitações • Nível: {d.data.nivelAcesso}</p>
+                           </div>
+                           <div className="flex items-center gap-2 opacity-80 group-hover:opacity-100">
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); loadSavedProcess(d.data); }} 
+                                className="p-2 border border-blue-500/30 text-blue-400 hover:bg-blue-500/20 rounded transition-colors"
+                                title="Editar Processo"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleExport(d.data); }} 
+                                className="p-2 border border-green-500/30 text-green-400 hover:bg-green-500/20 rounded transition-colors"
+                                title="Exportar XLSX"
+                              >
+                                <FileSpreadsheet size={16} />
+                              </button>
+                              <button 
+                                onClick={(e) => deleteSavedProcess(d.id, e)} 
+                                className="p-2 border border-red-500/30 text-red-400 hover:bg-red-500/20 rounded transition-colors ml-2"
+                                title="Excluir Processo"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                           </div>
+                        </div>
+                     ))}
+                  </div>
+               )}
+            </div>
+            
+            <div className="p-4 border-t border-slate-800 bg-slate-900/50 flex justify-end">
+               <button onClick={() => {
+                   setData(initialData); 
+                   setIsSaved(false); 
+                   setCurrentStep(1); 
+                   setShowSavedList(false);
+                 }} 
+                 className="bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 px-6 rounded-lg transition-colors border border-slate-700 mr-4"
+               >
+                 + Criar Novo Processo
+               </button>
+               <button onClick={() => setShowSavedList(false)} className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded-lg transition-colors">
+                 Fechar
+               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

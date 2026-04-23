@@ -1,4 +1,5 @@
 export interface ProcessoData {
+  id?: string;
   nome: string;
   finalidade: string;
   baseLegal: string;

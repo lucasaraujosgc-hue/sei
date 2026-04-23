@@ -1,15 +1,17 @@
 import React from 'react';
 import { ProcessoData } from '../types';
-import { AlertCircle, CheckCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Save } from 'lucide-react';
 
 interface Props {
   data: ProcessoData;
+  isSaved: boolean;
   update: (updates: Partial<ProcessoData>) => void;
+  onSave: () => void;
   onFinish: () => void;
   onPrev: () => void;
 }
 
-export default function Step4({ data, update, onFinish, onPrev }: Props) {
+export default function Step4({ data, isSaved, update, onSave, onFinish, onPrev }: Props) {
   
   const setNivel = (nivel: ProcessoData['nivelAcesso']) => {
     update({ nivelAcesso: nivel, hipoteseLegal: nivel === 'Público' ? '' : data.hipoteseLegal });
@@ -36,7 +38,7 @@ export default function Step4({ data, update, onFinish, onPrev }: Props) {
           className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${data.nivelAcesso === 'Restrito' ? 'border-orange-500 bg-orange-900/20' : 'border-slate-800 bg-slate-900 hover:border-slate-700'}`}
         >
           <h3 className={`font-bold mb-2 ${data.nivelAcesso === 'Restrito' ? 'text-orange-400' : 'text-slate-200'}`}>Restrito</h3>
-          <p className="text-sm text-slate-400">Só as unidades por onde tramita o processo podem ler os documentos. Todos podem ver o processo.</p>
+          <p className="text-sm text-slate-400">Só as unidades por onde tramita o processo podem ler os documentos.</p>
         </div>
 
         <div 
@@ -73,20 +75,30 @@ export default function Step4({ data, update, onFinish, onPrev }: Props) {
         </div>
       )}
 
-      <div className="flex justify-between pt-8 border-t border-slate-800">
+      <div className="flex justify-between items-center pt-8 border-t border-slate-800">
         <button 
           onClick={onPrev} 
           className="bg-slate-800 hover:bg-slate-700 text-white font-medium py-2 px-6 rounded-lg transition-colors border border-slate-700"
         >
           Voltar
         </button>
-        <button 
-          onClick={onFinish} 
-          disabled={!data.nivelAcesso || (data.nivelAcesso !== 'Público' && !data.hipoteseLegal)}
-          className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors"
-        >
-          Exportar Planilha (XLSX)
-        </button>
+        <div className="flex gap-3 items-center">
+          <button 
+            onClick={onSave} 
+            className="flex items-center gap-2 border border-blue-500 text-blue-500 hover:bg-blue-500/10 font-medium py-2 px-6 rounded-lg transition-colors"
+          >
+            <Save size={18} /> Salvar
+          </button>
+          
+          <button 
+            onClick={onFinish} 
+            disabled={!isSaved || !data.nivelAcesso || (data.nivelAcesso !== 'Público' && !data.hipoteseLegal)}
+            className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors"
+            title={!isSaved ? "Salve o processo primeiro para liberar a exportação" : "Exportar Processo como Planilha"}
+          >
+            Exportar Planilha (XLSX)
+          </button>
+        </div>
       </div>
     </div>
   );
