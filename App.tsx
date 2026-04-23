@@ -1,291 +1,151 @@
+import React, { useState } from 'react';
+import { ProcessoData } from './types';
+import Step1 from './src/components/Step1';
+import Step2 from './src/components/Step2';
+import Step3 from './src/components/Step3';
+import Step4 from './src/components/Step4';
+import { generateExcel } from './src/utils/exportExcel';
+import { FileSpreadsheet, Download, Save, Home, BookOpen, Clock, FileText, Shield } from 'lucide-react';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { HashRouter as Router, Routes, Route, useParams, Link, useNavigate } from 'react-router-dom';
-import { Lock, LayoutDashboard } from 'lucide-react';
-import { TOPICS } from './constants';
-import { Meta, TopicId } from './types';
-import { TopicCard } from './components/TopicCard';
-import { AdminPanel } from './components/AdminPanel';
-import { SummaryPanel } from './components/SummaryPanel';
-import { ReportModal } from './components/ReportModal';
+const initialData: ProcessoData = {
+  nome: '',
+  finalidade: '',
+  baseLegal: '',
+  unidadesIniciadoras: [],
+  possuiFluxoMapeado: '',
+  nivelAcesso: 'Público',
+  hipoteseLegal: '',
+  tramitacoes: []
+};
 
-function App() {
-  const [posts, setPosts] = useState<Meta[]>([]);
-  const [isAdminOpen, setIsAdminOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [usingServer, setUsingServer] = useState(true);
+export default function App() {
+  const [data, setData] = useState<ProcessoData>(initialData);
+  const [currentStep, setCurrentStep] = useState(1);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
 
-  // Função auxiliar para calcular Status e Progresso
-  const processMeta = (meta: any): Meta => {
-      // 1. Parse de dados extras se virem do backend como string
-      const data = meta.extraData ? { ...meta, ...JSON.parse(meta.extraData) } : meta;
-      
-      // Garante tipos
-      const etapas = Array.isArray(data.etapas) ? data.etapas : [];
-      const deadline = new Date(data.prazoGeral);
-      const today = new Date();
-      // Zera horas para comparação de datas apenas
-      today.setHours(0,0,0,0);
-      deadline.setHours(0,0,0,0);
-
-      const diffTime = deadline.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-
-      // 2. Calcular Progresso
-      const totalEtapas = etapas.length;
-      const concluidas = etapas.filter((e: any) => e.concluido).length;
-      const progress = totalEtapas > 0 ? (concluidas / totalEtapas) * 100 : 0;
-
-      // 3. Calcular Status
-      let status: 'green' | 'yellow' | 'red' = 'green';
-
-      if (progress === 100) {
-          status = 'green'; // Concluído é sempre verde
-      } else {
-          if (diffDays < 0) {
-              status = 'red'; // Atrasado (hoje > prazo)
-          } else if (diffDays <= (data.diasAlerta || 7)) {
-              status = 'yellow'; // Perto do prazo
-          } else {
-              status = 'green'; // No prazo
-          }
-      }
-
-      return {
-          ...data,
-          etapas,
-          computedStatus: status,
-          computedProgress: progress
-      };
-  };
-
-  const fetchPosts = async () => {
+  const [savedDrafts, setSavedDrafts] = useState<any[]>(() => {
     try {
-      setIsLoading(true);
-      const response = await fetch('/api/posts');
-      if (!response.ok) throw new Error('Erro servidor');
-      const json = await response.json();
-      
-      const parsedPosts = json.data.map(processMeta);
-
-      // Ordenação Padrão: Atrasados primeiro, depois atenção, depois ok
-      const statusWeight = { 'red': 3, 'yellow': 2, 'green': 1 };
-      const sortedPosts = parsedPosts.sort((a: Meta, b: Meta) => {
-          return (statusWeight[b.computedStatus!] || 0) - (statusWeight[a.computedStatus!] || 0);
-      });
-
-      setPosts(sortedPosts || []);
-      setUsingServer(true);
-    } catch (err) {
-      setUsingServer(false);
-      const localData = localStorage.getItem('metas_sgc'); // Nova chave para evitar conflito
-      if (localData) {
-          const parsedLocal = JSON.parse(localData).map(processMeta);
-          setPosts(parsedLocal);
-      }
-    } finally {
-      setIsLoading(false);
+      return JSON.parse(localStorage.getItem('sei_drafts') || '[]');
+    } catch {
+      return [];
     }
-  };
+  });
 
-  useEffect(() => { fetchPosts(); }, []);
-
-  const handleAddPost = async (metaData: any) => {
-    const newPost = {
-      id: Date.now().toString(),
-      createdAt: Date.now(),
-      ...metaData
-    };
-
-    if (usingServer) {
-      try {
-        const payload = {
-            id: newPost.id,
-            topicId: newPost.topicId,
-            description: newPost.descricao, 
-            chartConfig: { type: 'bar', title: newPost.titulo, data: [] }, 
-            createdAt: newPost.createdAt,
-            ...metaData 
-        };
-
-        const response = await fetch('/api/posts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Erro salvar');
-        
-        setPosts(prev => [processMeta(newPost), ...prev]);
-        return true;
-      } catch (err) { return false; }
+  // A simple password auth requested by user. "quem tiver a senha, funcionará dessa forma"
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (password === 'sei2025' || password === 'SEI2025' || password === 'admin') { // arbitrary simple password
+      setIsAuthenticated(true);
     } else {
-      const updated = [processMeta(newPost), ...posts];
-      setPosts(updated);
-      localStorage.setItem('metas_sgc', JSON.stringify(updated));
-      return true;
+      alert('Senha incorreta!');
     }
   };
 
-  const handleEditPost = async (id: string, metaData: any) => {
-    const updatedFields = { ...metaData };
-    if (usingServer) {
-      try {
-        const payload = {
-            topicId: metaData.topicId,
-            description: metaData.descricao,
-            chartConfig: { type: 'bar', title: metaData.titulo, data: [] },
-            ...metaData
-        };
-
-        const response = await fetch(`/api/posts/${id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) throw new Error('Erro update');
-        
-        setPosts(prev => prev.map(p => p.id === id ? processMeta({ ...p, ...updatedFields }) : p));
-        return true;
-      } catch (err) { return false; }
-    } else {
-      const updated = posts.map(p => p.id === id ? processMeta({ ...p, ...updatedFields }) : p);
-      setPosts(updated);
-      localStorage.setItem('metas_sgc', JSON.stringify(updated));
-      return true;
-    }
+  const handleUpdate = (updates: Partial<ProcessoData>) => {
+    setData({ ...data, ...updates });
   };
 
-  const handleDeletePost = async (id: string) => {
-    if (usingServer) {
-      await fetch(`/api/posts/${id}`, { method: 'DELETE' });
-      setPosts(prev => prev.filter(p => p.id !== id));
-    } else {
-      const updated = posts.filter(p => p.id !== id);
-      setPosts(updated);
-      localStorage.setItem('metas_sgc', JSON.stringify(updated));
-    }
+  const handleExport = () => {
+    generateExcel(data);
   };
+
+  const handleSaveDraft = () => {
+    const drafts = [...savedDrafts, { id: Date.now(), data, name: data.nome || 'Rascunho Sem Nome' }];
+    setSavedDrafts(drafts);
+    localStorage.setItem('sei_drafts', JSON.stringify(drafts));
+    alert('Rascunho salvo com sucesso nas estatísticas locais.');
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4">
+        <div className="bg-slate-900 border border-slate-800 p-8 rounded-xl max-w-sm w-full shadow-2xl">
+          <div className="flex justify-center mb-6">
+             <img src="https://pmsgc-goncalinho.wvai75.easypanel.host/brasao.png" className="h-16 w-auto" alt="Logo" />
+          </div>
+          <h1 className="text-2xl font-bold text-white text-center mb-2">Mapeamento SEI</h1>
+          <p className="text-slate-400 text-sm text-center mb-6">Insira a senha de acesso ao sistema (ex: sei2025)</p>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <input 
+              type="password" 
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+              placeholder="Senha de acesso"
+            />
+            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors">
+              Entrar
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  const steps = [
+    { num: 1, title: 'Cabeçalho', icon: BookOpen },
+    { num: 2, title: 'Linha do Tempo', icon: Clock },
+    { num: 3, title: 'Documentação', icon: FileText },
+    { num: 4, title: 'Nível de Acesso', icon: Shield },
+  ];
 
   return (
-    <Router>
-      <div className="min-h-screen bg-[#020617] text-slate-100 font-sans">
-        <header className="bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-800">
-          <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
-            <Link to="/" className="flex items-center gap-4">
-              <img src="https://pmsgc-goncalinho.wvai75.easypanel.host/brasao.png" className="h-10 w-auto" alt="Logo" />
-              <div>
-                <h1 className="text-xl font-bold text-white leading-none">Gestão de Metas</h1>
-                <span className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Sala de Situação Executiva</span>
-              </div>
-            </Link>
-            <div className="flex items-center gap-3">
-                <Link to="/painel" className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-emerald-400 border border-slate-700 rounded-lg transition-all active:scale-95 hover:bg-slate-800">
-                    <LayoutDashboard size={14} /> Painel
-                </Link>
-                <button onClick={() => setIsAdminOpen(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-emerald-400 border border-slate-700 rounded-lg transition-all active:scale-95 hover:bg-slate-800">
-                    <Lock size={14} /> Gestão
-                </button>
+    <div className="min-h-screen bg-[#020617] text-slate-100 font-sans">
+      <header className="bg-slate-900/90 backdrop-blur-md sticky top-0 z-40 border-b border-slate-800">
+        <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <img src="https://pmsgc-goncalinho.wvai75.easypanel.host/brasao.png" className="h-10 w-auto" alt="Logo" />
+            <div>
+              <h1 className="text-xl font-bold text-white leading-none">Mapeamento SEI</h1>
+              <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Prefeitura Municipal</span>
             </div>
           </div>
-        </header>
-
-        <main className="max-w-7xl mx-auto px-4 py-8">
-          <Routes>
-            <Route path="/" element={<DashboardView isLoading={isLoading} />} />
-            <Route path="/topic/:topicId" element={<TopicDetailView posts={posts} />} />
-            <Route path="/painel" element={<SummaryPanel posts={posts} />} />
-          </Routes>
-        </main>
-
-        {isAdminOpen && (
-          <AdminPanel 
-            isOpen={isAdminOpen}
-            onClose={() => setIsAdminOpen(false)}
-            posts={posts}
-            onAddPost={handleAddPost}
-            onEditPost={handleEditPost}
-            onDeletePost={handleDeletePost}
-            usingServer={usingServer}
-          />
-        )}
-      </div>
-    </Router>
-  );
-}
-
-const DashboardView = ({ isLoading }: { isLoading: boolean }) => {
-  const navigate = useNavigate();
-  const mainTopics = TOPICS.filter(t => t.id !== TopicId.CONTROLADORIA && t.id !== TopicId.PROCURADORIA);
-  const sideTopics = TOPICS.filter(t => t.id === TopicId.CONTROLADORIA || t.id === TopicId.PROCURADORIA);
-
-  return (
-    <div className="space-y-10 py-10">
-      <div className="flex flex-col md:flex-row justify-between items-end border-b border-slate-800 pb-8 gap-6">
-        <div>
-            <h2 className="text-4xl font-black text-white mb-2">Painel de Metas</h2>
-            <p className="text-slate-400 max-w-xl">Acompanhamento transparente das metas e resultados da gestão municipal.</p>
+          <div className="flex items-center gap-3">
+              <button onClick={handleSaveDraft} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-400 hover:text-white border border-slate-700 rounded-lg transition-all active:scale-95 hover:bg-slate-800">
+                  <Save size={16} /> Salvar Rascunho
+              </button>
+              <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 hover:bg-green-500 border border-green-500 rounded-lg transition-all active:scale-95">
+                  <FileSpreadsheet size={16} /> Exportar XLSX
+              </button>
+          </div>
         </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto px-4 py-8">
         
-        {/* Secretarias Especiais (Controladoria/Procuradoria) */}
-        <div className="flex gap-4">
-            {sideTopics.map(topic => (
-                <button 
-                    key={topic.id}
-                    onClick={() => navigate(`/topic/${topic.id}`)}
-                    className="flex items-center gap-3 bg-slate-900 border border-slate-700 hover:border-emerald-500 rounded-xl p-3 transition-all group"
-                >
-                    <div className={`p-2 rounded-lg ${topic.color} bg-opacity-20`}>
-                        {/* Ícones específicos ou genéricos */}
-                        <div className={`w-4 h-4 rounded-full ${topic.color}`}></div>
-                    </div>
-                    <div className="text-left">
-                        <h4 className="text-xs font-bold text-white uppercase">{topic.label}</h4>
-                        <span className="text-[10px] text-slate-500 group-hover:text-emerald-400 transition-colors">Acessar &rarr;</span>
-                    </div>
-                </button>
-            ))}
+        {/* Progress Stepper */}
+        <div className="flex items-center justify-between mb-10 relative">
+           <div className="absolute left-0 top-1/2 -z-10 h-1 w-full bg-slate-800 -translate-y-1/2"></div>
+           <div className="absolute left-0 top-1/2 -z-10 h-1 bg-blue-600 -translate-y-1/2 transition-all duration-300" style={{ width: `${((currentStep - 1) / 3) * 100}%`}}></div>
+           
+           {steps.map(step => (
+             <div key={step.num} className="flex flex-col items-center">
+               <button 
+                 onClick={() => setCurrentStep(step.num)}
+                 className={`w-12 h-12 rounded-full flex items-center justify-center border-4 transition-colors ${
+                   currentStep === step.num 
+                    ? 'bg-blue-600 border-[#020617] text-white' 
+                    : currentStep > step.num 
+                      ? 'bg-blue-600 border-[#020617] text-white' 
+                      : 'bg-slate-800 border-[#020617] text-slate-400'
+                 }`}
+               >
+                 <step.icon size={20} />
+               </button>
+               <span className={`text-xs mt-2 font-medium ${currentStep >= step.num ? 'text-blue-400' : 'text-slate-500'}`}>{step.title}</span>
+             </div>
+           ))}
         </div>
-      </div>
 
-      {isLoading ? <div className="flex justify-center py-20"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500"></div></div> : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {mainTopics.map(topic => <TopicCard key={topic.id} topic={topic} onClick={(id) => navigate(`/topic/${id}`)} />)}
+        {/* Form Content */}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 shadow-xl">
+          {currentStep === 1 && <Step1 data={data} update={handleUpdate} onNext={() => setCurrentStep(2)} />}
+          {currentStep === 2 && <Step2 data={data} update={handleUpdate} onNext={() => setCurrentStep(3)} onPrev={() => setCurrentStep(1)} />}
+          {currentStep === 3 && <Step3 data={data} update={handleUpdate} onNext={() => setCurrentStep(4)} onPrev={() => setCurrentStep(2)} />}
+          {currentStep === 4 && <Step4 data={data} update={handleUpdate} onFinish={handleExport} onPrev={() => setCurrentStep(3)} />}
         </div>
-      )}
+      </main>
     </div>
   );
-};
-
-const TopicDetailView = ({ posts }: { posts: Meta[] }) => {
-    const { topicId } = useParams();
-    
-    // Lógica Avançada de Filtragem:
-    // 1. Metas pertencentes a esta secretaria
-    // 2. Metas de OUTRAS secretarias que tenham etapas PENDENTES vinculadas a ESTA secretaria
-    
-    const relevantPosts = useMemo(() => {
-        return posts.filter(p => {
-            // Caso 1: Pertence a secretaria atual
-            if (p.topicId === topicId) return true;
-
-            // Caso 2: Tem etapa pendente vinculada a secretaria atual
-            const hasPendingLink = p.etapas.some(e => 
-                !e.concluido && 
-                e.vinculos?.some(v => v.tipo === 'secretaria' && v.valor === topicId)
-            );
-
-            if (hasPendingLink) {
-                // Marca como externa para a UI saber diferenciar
-                p.isExternal = true; 
-                p.originTopicId = p.topicId;
-                return true;
-            }
-
-            return false;
-        });
-    }, [posts, topicId]);
-    
-    return <SummaryPanel posts={relevantPosts} />;
-};
-
-export default App;
+}
