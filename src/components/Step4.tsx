@@ -91,7 +91,7 @@ export default function Step4({ data, isSaved, update, onSave, onFinish, onPrev 
           </button>
           
           <button 
-            onClick={onFinish} 
+            onClick={() => onFinish()} 
             disabled={!isSaved || !data.nivelAcesso || (data.nivelAcesso !== 'Público' && !data.hipoteseLegal)}
             className="bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors"
             title={!isSaved ? "Salve o processo primeiro para liberar a exportação" : "Exportar Processo como Planilha"}
